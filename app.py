@@ -184,7 +184,7 @@ else:
                 <b style="color: #ffbd44; font-size: 70px; letter-spacing: -0.07em; margin-left: -20px">Project</b> 
                 <b style="color: #ffbd44; font-size: 110px; margin-left: -20px; top: 100px; position: absolute; -webkit-text-stroke: 2px black;">𝒙</b> <br>
             </div>
-            <div style="margin-top: 40px; letter-spacing: 0.01em; color: #999;">
+            <div style="margin-top: 40px; letter-spacing: 0.01em; color: #ffffff;">
                 Designed for <span style="color: #00a29d">Bank Syariah Indonesia (BSI) </span>testing team <br> to simplify test management and enhance decision-making <br>
             </div>
         </div>
@@ -266,7 +266,7 @@ else:
                     text-align: center;  
                     line-height: 1;
                     height: 5vh;">
-                    <div style="margin-top: 40px; color: #999;">
+                    <div style="margin-top: 40px; color: #ffffff;">
                         Made with 💛 by 
                     <a href="https://www.linkedin.com/in/naharirasif/" target="_blank" style="color: #ffbd44; text-decoration: none;">
                         Nahari Rasif
