@@ -62,67 +62,68 @@ def is_email_registered(email):
 
 # Logout function
 def logout():
-    for key in ['role', 'username', 'sidebar_state']:
-        if key in st.session_state:
-            del st.session_state[key]
+    st.session_state.clear()
+    st.session_state['is_logged_in'] = False
+    st.session_state['role'] = None
+    st.session_state['username'] = None
     st.rerun()
 
-# Dynamic Navigation
-def setup_navigation():
-    role = st.session_state.role
-    logout_page = st.Page(logout, title="Log out", icon=":material/logout:")
-
-    admin_1 = st.Page(admin_page.display_admin_page, title="Admin", icon=":material/person:")
-    tester_1 = st.Page(tester_page.display_tester_page, title="PTR", icon=":material/conveyor_belt:")
-    jira_1 = st.Page(jira_page.display_jira_page, title="JIRA View", icon=":material/visibility:")
-    guest_1 = st.Page(guest_page.display_guest_page, title='Guest', icon=':material/location_away:')
-
-    account_pages = [logout_page]
-
-    if role == "admin":
-        admin_pages = [admin_1, tester_1, jira_1]
-        selected_page = st.navigation({"Admin": admin_pages} | {'Account': account_pages})
-        selected_page.run()
-    elif role == "user":
-        tester_pages = [tester_1, jira_1]
-        selected_page = st.navigation({" ": tester_pages} | {'Account': account_pages})
-        selected_page.run()
-    elif role == "guest":
-        guest_pages = [guest_1]
-        selected_page = st.navigation({'Guest': guest_pages} | {'Account': account_pages})
-        selected_page.run()
+# Login function
+def login(username, password):
+    role = validate_user(username, password)
+    if role:
+        st.session_state['is_logged_in'] = True
+        st.session_state['role'] = role
+        st.session_state['username'] = username
+        st.session_state['active_page'] = None
+        st.rerun()
     else:
-        st.error("Invalid role")
+        st.error('Invalid username or password')
 
 # Main App Logic
 # Initialize session state
-if "sidebar_state" not in st.session_state:
-    st.session_state.sidebar_state = "collapsed"  # Default state
-if "role" not in st.session_state:
-    st.session_state.role = None
-if "username" not in st.session_state:
-    st.session_state.username = None
+if 'is_logged_in' not in st.session_state:
+    st.session_state['is_logged_in'] = False
+if 'role' not in st.session_state:
+    st.session_state['role'] = None
+if 'username' not in st.session_state:
+    st.session_state['username'] = None
+if 'active_page' not in st.session_state:
+    st.session_state['active_page'] = None
 
-st.set_page_config(initial_sidebar_state=st.session_state.sidebar_state, page_title='QA ProjectX', layout='wide')
+st.set_page_config(page_title='QA ProjectX', layout='wide')
 
-if st.session_state.role:
-    st.session_state.sidebar_state = "expanded"
-    setup_navigation()
+if st.session_state['is_logged_in']:
+    st.sidebar.header(f"Welcome, {st.session_state['username']}!")
+    role = st.session_state['role']
+
+    pages = []
+    if role == 'admin':
+        pages = ["Admin Page", "PTR Page", "JIRA Page"]
+    elif role == 'user':
+        pages = ["PTR Page", "JIRA Page"]
+    elif role == 'guest':
+        pages = ["Guest Page"]
+
+    pages.append("Logout")
+
+    selected_page = st.sidebar.radio(" ", pages)
+
+    if selected_page == "Logout":
+        logout()
+    elif selected_page == "Admin Page":
+        st.session_state['active_page'] = 'admin'
+        admin_page.display_admin_page()
+    elif selected_page == "PTR Page":
+        st.session_state['active_page'] = 'ptr'
+        tester_page.display_tester_page()
+    elif selected_page == "JIRA Page":
+        st.session_state['active_page'] = 'jira'
+        jira_page.display_jira_page()
+    elif selected_page == "Guest Page":
+        st.session_state['active_page'] = 'guest'
+        guest_page.display_guest_page()
 else:
-    st.session_state.sidebar_state = "collapsed"
-
-    # Hide sidebar control when logged out
-    st.markdown(
-        """
-        <style>
-            [data-testid="collapsedControl"] {
-                display: none !important;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
     st.markdown(
         f"""
         <div style="
@@ -145,7 +146,7 @@ else:
         """, 
         unsafe_allow_html=True
     )
-
+    
     st.markdown("""
         <style>
             .stTabs [data-baseweb="tab-list"] {
@@ -164,10 +165,10 @@ else:
 
     with st.container():
         col1, col2, col3 = st.columns([1,1,1])
-
+        
         with col1:
             st.header(' ')
-
+            
         with col2:
             tab1, tab2 = st.tabs(['Login', 'Sign Up'])
 
@@ -178,22 +179,14 @@ else:
                     password = st.text_input('Password', type='password')
                     login_button = st.form_submit_button(label='Login')
 
-                if login_button:
-                    if username and password:
-                        role = validate_user(username, password)
-                        if role:
-                            # Set session state for the logged-in user
-                            st.session_state.role = role
-                            st.session_state.username = username
-                            st.session_state.sidebar_state = "expanded"
-                            st.rerun()  # Refresh to show navigation
+                    if login_button:
+                        if username and password:
+                            login(username, password)
                         else:
-                            st.error('Invalid username or password')
-                    else:
-                        st.error('All fields are required')
+                            st.error('All fields are required')
 
             with tab2:
-                st.subheader(':partying_face: Sign up')
+                st.subheader(':partying_face: Sign Up')
                 with st.form(key='signup_form'):
                     username = st.text_input('Username')
                     email = st.text_input('Email')
@@ -207,36 +200,34 @@ else:
                             elif is_valid_email(email):
                                 if is_valid_password(password):
                                     save_to_csv(username, email, password)
-                                    st.success("You have successfully signed up! Your role is 'Guest'. Please contact the admin to update your role.\n\n" 
-                                            "Nahari Rasif\n" 
-                                            "+62 85735536315")
+                                    st.success("You have successfully signed up! Your role is 'Guest'. Please contact the admin to update your role.")
                                 else:
                                     st.error('Password must be at least 6 characters long and contain both letters and numbers')
                             else:
                                 st.error('Invalid email address. Please enter a valid email')
                         else:
                             st.error('All fields are required')
-
+                            
+            st.markdown(
+                f"""
+                <div style="
+                    display: flex;
+                    flex-direction: column; 
+                    justify-content: center; 
+                    align-items: center; 
+                    text-align: center;  
+                    line-height: 1;
+                    height: 5vh;">
+                    <div style="margin-top: 40px;">
+                        Made with 💛 by 
+                    <a href="https://www.linkedin.com/in/naharirasif/" target="_blank" style="color: #ffbd44; text-decoration: none;">
+                        Nahari Rasif
+                    </a>
+                    </div>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+        
         with col3:
             st.header(' ')
-
-    st.markdown(
-        f"""
-        <div style="
-            display: flex;
-            flex-direction: column; 
-            justify-content: center; 
-            align-items: center; 
-            text-align: center;  
-            line-height: 1;
-            height: 5vh;">
-            <div style="margin-top: 40px;">
-                Made with 💛 by 
-            <a href="https://www.linkedin.com/in/naharirasif/" target="_blank" style="color: #ffbd44; text-decoration: none;">
-                Nahari Rasif
-            </a>
-            </div>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
