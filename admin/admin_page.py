@@ -5,7 +5,7 @@ import os
 CSV_FILE = 'user_data.csv'
 
 def display_admin_page():
-    st.title("Manage Users")
+    st.title(":orange[Manage Users]")
 
     # Check if the CSV file exists
     if os.path.exists(CSV_FILE):
