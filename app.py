@@ -182,9 +182,9 @@ else:
             <div>
                 <b style="font-size: 70px; letter-spacing: -0.07em; color: #ffffff;">Testing Insight</b> <br>
                 <b style="color: #ffbd44; font-size: 70px; letter-spacing: -0.07em; margin-left: -20px">Project</b> 
-                <b style="color: #ffbd44; font-size: 110px; margin-left: -20px; top: 100px; position: absolute; -webkit-text-stroke: 2px black;">𝒙</b> <br>
+                <b style="color: #ffbd44; font-size: 110px; margin-left: -20px; top: 90px; position: absolute; -webkit-text-stroke: 2px black;">𝒙</b> <br>
             </div>
-            <div style="margin-top: 40px; letter-spacing: 0.01em; color: #ffffff;">
+            <div style="margin-top: 40px; letter-spacing: 0.01em; color: #ffffff; margin-top: 60px;">
                 Designed for <span style="color: #00a29d">Bank Syariah Indonesia (BSI) </span>testing team <br> to simplify test management and enhance decision-making <br>
             </div>
         </div>

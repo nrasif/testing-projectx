@@ -11,6 +11,7 @@ from googleapiclient.http import MediaIoBaseDownload
 
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 
 from matplotlib.colors import to_rgba
 
@@ -18,6 +19,8 @@ from datetime import datetime
 import pytz
 
 import textwrap
+
+from streamlit_extras.stylable_container import stylable_container
 
 SCOPES = SCOPE_ID
 SERVICE_ACCOUNT_FILE = SERVICE_ACC_ID
@@ -85,7 +88,7 @@ def processing_excel(file_data, sheet_name):
     
     # Get the rows which will become header
     value_to_skip = 'Features'
-    max_rows_to_scan = 10
+    max_rows_to_scan = 20
 
     header_index = excel_ptr.head(max_rows_to_scan).apply(lambda row: row.astype(str).str.contains(value_to_skip).any(), axis=1).idxmax()
 
@@ -101,7 +104,7 @@ def processing_excel(file_data, sheet_name):
     
     # Convert column OS Version types
     if 'OS Version' not in excel_ptr.columns:
-        st.stop()
+        st.warning("The selected sheet does not have an 'OS Version' column. Skipping this part of processing.")
     else:
         excel_ptr['OS Version'] = excel_ptr['OS Version'].astype(str)
     
@@ -114,12 +117,19 @@ def processing_excel(file_data, sheet_name):
         'Rekening Sumber\n[Jika ada]': 'Rekening Sumber',
         'Data yang Digunakan\n[Jika ada]': 'Data yang digunakan',
         'FT\n[Jika Ada]': 'FT',
-        'Tanggal Eksekusi\n[harus diisi]': 'Tanggal Eksekusi',
-        'Tanggal Passed\n[harus diisi]': 'Tanggal Passed'
+        # 'Tanggal Eksekusi\n[harus diisi]': 'Tanggal Eksekusi',
+        # 'Tanggal Passed\n[harus diisi]': 'Tanggal Passed'
     }, inplace=True)
     
-    # Because of merged and centered, need to use ffill to duplicate values before current rows
-    excel_ptr[['Features', 'Sub-features', 'Expected Condition']] = excel_ptr[['Features', 'Sub-features', 'Expected Condition']].apply(lambda x: x.ffill())
+    # Define the columns to ffill
+    columns_to_ffill = ['Features', 'Sub-features', 'Expected Condition']
+
+    # Check if 'Link JIRA' exists in the dataframe
+    if 'Link JIRA' in excel_ptr.columns:
+        columns_to_ffill.append('Link JIRA')
+
+    # Apply ffill only on the selected columns
+    excel_ptr[columns_to_ffill] = excel_ptr[columns_to_ffill].apply(lambda x: x.ffill())
     
     return excel_ptr, listof_ver
 
@@ -138,6 +148,27 @@ def progress_status(df, version):
     df_plot['Percentage'] = df_plot['Percentage'].apply(lambda row: round(row, 2))
 
     return df_plot
+
+
+def my_metric(label, value, bg_color, icon="bi bi-check-circle"):
+    fontsize = 40
+    valign = "left"
+    
+    lnk = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" />'
+
+    bg_color_css = f'rgb({bg_color[0]}, {bg_color[1]}, {bg_color[2]}, 0.75)'
+
+    # Corrected HTML structure for label visibility
+    htmlstr = f"""<div style='background-color: {bg_color_css}; 
+                                font-size: {fontsize}px; 
+                                border-radius: 10px; 
+                                padding: 18px; 
+                                line-height:35px;'>
+                    <i class='{icon}' style='font-size: 30px;'></i> <strong>{value}</strong>
+                    <div style='font-size: 20px; margin-top: 5px;'>{label}</div>
+                </div>"""
+
+    st.markdown(lnk + htmlstr, unsafe_allow_html=True)
 
 def progress_plot(df_plot):
     progress_bar = px.bar(
@@ -179,11 +210,10 @@ def progress_plot(df_plot):
             x=0.5,
             font_size=16
         ),
-        margin=dict(l=50, r=50, t=30, b=0),  # Adjust margins for spacing
+        margin=dict(l=50, r=50, t=20, b=0),  # Adjust margins for spacing
         plot_bgcolor="rgba(0,0,0,0)",  # Transparent plot background
         paper_bgcolor="#1E1E1E",  # Light gray background
-        font_size=16,
-        width=1000,
+        font_size=14,
         height=500
     )
     
@@ -194,7 +224,7 @@ def wrap_text(text, width=20):
     return '\n'.join(textwrap.wrap(text, width))
 
 def display_tester_page():
-    with st.expander(label='Filter'):
+    with st.expander(label='Configuration', icon=":material/tune:"):
         with st.container():
             col1, col2, col3 = st.columns([1, 1, 1])
             
@@ -252,10 +282,13 @@ def display_tester_page():
 
 
     # SANKEY DIAGRAM
-    # Create nodes and flows
+    # Determine the primary column to use: "Link JIRA" if it exists, otherwise "Features"
+    primary_column = "Link JIRA" if "Link JIRA" in excel_ptr.columns else "Features"
+
+    # Generate unique nodes from relevant columns
     try:
         nodes = list(set(
-            excel_ptr['Features'].tolist() +
+            excel_ptr[primary_column].tolist() +
             excel_ptr['Sub-features'].tolist() +
             excel_ptr['OS'].tolist() +
             excel_ptr['OS Version'].tolist() +
@@ -283,14 +316,14 @@ def display_tester_page():
 
         # Generate sources and targets for the Sankey diagram
         for _, row in excel_ptr.iterrows():
-            feature = row["Features"]
+            primary_value = row[primary_column]
             sub_feature = row["Sub-features"]
             status = row["Status "+ select_ptr_version]
             os_type = row["OS"]
 
             # Feature -> Status -> OS if Status is "Passed"
             if status == "Passed":
-                sources.append(nodes.index(feature))  # Feature -> Status
+                sources.append(nodes.index(primary_value))  # Feature -> Status
                 targets.append(nodes.index(status))
                 values.append(1)
                 
@@ -304,7 +337,7 @@ def display_tester_page():
 
             # Feature -> Sub-feature -> Status -> OS if Status is "Failed"
             elif status == "Failed" or status == "N/A" or status == "In Progress" or status == "Not Started":
-                sources.append(nodes.index(feature))  # Feature -> Sub-feature
+                sources.append(nodes.index(primary_value))  # Feature -> Sub-feature
                 targets.append(nodes.index(sub_feature))
                 values.append(1)
 
@@ -339,15 +372,16 @@ def display_tester_page():
 
             opacity = 1  # Example opacity value (0.0 - 1.0)
             node_colors = {}
-            for i, feature in enumerate(excel_ptr["Features"].unique()):
-                hex_color = color_palette[i % num_colors]  # Get the hex color
-                rgba_color = to_rgba(hex_color, alpha=opacity)  # Convert to RGBA
-                node_colors[feature] = f"rgba({int(rgba_color[0]*255)}, {int(rgba_color[1]*255)}, {int(rgba_color[2]*255)}, {rgba_color[3]})"
+            # Assign colors to features
+            for i, primary_value in enumerate(excel_ptr[primary_column].unique()):
+                hex_color = color_palette[i % num_colors]
+                rgba_color = to_rgba(hex_color, alpha=opacity)
+                node_colors[primary_value] = f"rgba({int(rgba_color[0]*255)}, {int(rgba_color[1]*255)}, {int(rgba_color[2]*255)}, {rgba_color[3]})"
 
             # Propagate feature colors to sub-features
-            for feature in excel_ptr["Features"].unique():
-                feature_color = node_colors[feature]
-                for sub_feature in excel_ptr[excel_ptr["Features"] == feature]["Sub-features"].unique():
+            for primary_value in excel_ptr[primary_column].unique():
+                feature_color = node_colors[primary_value]
+                for sub_feature in excel_ptr[excel_ptr[primary_column] == primary_value]["Sub-features"].unique():
                     node_colors[sub_feature] = "rgba(200, 200, 200, 0.8)"
 
             # Overwrite colors for 'Passed' and 'Failed'
@@ -396,7 +430,7 @@ def display_tester_page():
         fig.update_layout(
             font_size=12,
             # width=500,  # Increase width for a wider graph
-            height=700,   # Increase height for a taller graph
+            height=500,   # Increase height for a taller graph
             font=dict(size=14, color='white'),
             plot_bgcolor='#1E1E1E',
             paper_bgcolor='#1E1E1E',
@@ -462,53 +496,56 @@ def display_tester_page():
         groupDisplayType="groupRows"
     )
     
+    st.markdown("""
+        <style>
+            .stTabs [data-baseweb="tab-list"] {
+                gap: 250x;
+            }
+            
+        </style>
+        """, unsafe_allow_html=True)
+    
+    st.markdown(' ')
+    
+    st.markdown(f"""
+                <div style=' 
+                line-height: 1.5;
+                height: 10vh;
+                margin-bottom: 30px;'>
+                    <b style="color: #ffbd44; font-size: 36px;">{select_sheet}</b> <br>
+                    <b style="color: #ffbd44;">Version : <span style="color: #fff;">{select_ptr_version}</span></b> <br>
+                    <b style="color: #ffbd44;">Last updated time : <span style="color: #fff;">{formatted_time}</span></b>
+                </div>
+                """, unsafe_allow_html=True)
+    
     
     tab1, tab2 = st.tabs(['Dashboard', 'Data Sheet'])
     
     with tab1:
-        
-        
-        st.markdown(' ')
-        
-        st.markdown(f"""
-                    <div style='margin-bottom: 10px; font-size: 25px;'>
-                        <b style="color: #ffbd44;">{select_sheet}</b>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        # Display time modified fot selected file data
-        st.markdown(f"""
-                    <div style='margin-bottom: -10px;'>
-                        <b style="color: #ffbd44;">Version:</b> {select_ptr_version}
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        st.markdown(f"**:orange[Last updated time:]** {formatted_time}")
-        
-        st.markdown(':gray[A side project fully coded by [Nahari Rasif](%s)]' % 'https://www.linkedin.com/in/naharirasif/')
 
+        with st.expander("Overview", expanded=True):
+            st.plotly_chart(fig, use_container_width=True)
         
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.divider()
-        
-        
-        col1, col2, col3, col4, col5, col6= st.columns(6)
-        
-        col1.metric(label="Execution Rate", value="87%", border=True)
-        col2.metric(label="Passed", value="53%", border=True)
-        col3.metric(label="Failed", value="4%", border=True)
-        col4.metric(label="In Progress", value="11%", border=True)
-        col5.metric(label="Not Started", value="12%", border=True)
-        col6.metric(label="N/A", value="7%", border=True)
-        
+        st.markdown("""
+        <style>
+            div.stMetric {
+                border-radius: 20px;
+            }
+            div.stMetric > div:first-child {
+                font-size: 16px;            /* Larger font for the label */
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
         with st.container():
-            col1, col2 = st.columns([1,1])
+            col1, col2 = st.columns([1,2])
             with col1:
                 st.markdown(' ')
+                # with st.expander(' ', expanded=True):
                 st.markdown(f"""
-                            <div style='margin-bottom: -20px; font-size: 20px; text-align: center;'>
-                                <b style="color: #ffbd44;">Cumulative Progress</b>
+                            <div style='margin-bottom: -20px; margin-left: 20px; font-size: 20px; text-align: center;'>
+                                <b style="color: #ffbd44;">Cumulative Progress</b><br>
+                                <b style="color: #ffbd44;">{select_sheet}</b>
                             </div>
                             """, unsafe_allow_html=True)
                 
@@ -518,53 +555,197 @@ def display_tester_page():
                 st.plotly_chart(progress_bar, use_container_width=True)
                 
             with col2:
-                st.markdown(' ')
-                years = ['2016', '2017', '2018']
+                
+                with st.expander(" ", expanded=True):
+            
+                    st.markdown(f"""
+                        <div style='margin-top: -20px; margin-left: 150px; font-size: 20px; text-align: center;'>
+                            <b style="color: #ffbd44;">Overall Progress in Percentage</>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                    selected_file_heat = [(file_id, modified_time) for name, file_id, modified_time in list_files if name == selected_file][0]
+                    heat_id = selected_file_heat[0]
+                    
+                    heat_data = read_file_from_drive(heat_id)
+                    df_heat = pd.read_excel(heat_data, '-', header=None)
 
-                vert_graph = go.Figure()
-                vert_graph.add_trace(go.Bar(x=years, y=[500, 600, 700],
-                                            base=[-500, -600, -700],
-                                            marker_color='crimson',
-                                            name='expenses',
-                                            orientation='h'))  # Horizontal orientation
-                vert_graph.add_trace(go.Bar(x=years, y=[300, 400, 700],
-                                            base=0,
-                                            marker_color='lightslategrey',
-                                            name='revenue',
-                                            orientation='h'))  # Horizontal orientation
+                    df1 = df_heat.loc[0:7]
+                    df2 = df_heat.loc[10:17]
+                    df3 = df_heat.loc[19:21]
 
-                # Set title and legend to center
-                vert_graph.update_layout(
-                    title={
-                        'text': "<b>Financial Overview</b>",  # Example title
-                        'y': 0.9,
-                        'x': 0.5,
-                        'xanchor': 'center',
-                        'yanchor': 'top'
-                    },
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="center",
-                        x=0.5,
-                        font_size=16
+                    df1.columns = df1.loc[0]
+                    df2.columns = df2.loc[10]
+                    df3.columns = df3.loc[19]
+
+                    df1.drop(df1.index[0], inplace=True)
+                    df1.rename(columns={df1.columns[0]: 'Sheet name'}, inplace=True)
+
+                    df2.drop(df2.index[0], inplace=True)
+                    df2.rename(columns={df2.columns[0]: 'Sheet name'}, inplace=True)
+
+                    df3.drop(df3.index[0], inplace=True)
+                    df3.rename(columns={df3.columns[0]: 'Sheet name'}, inplace=True)
+
+                    df1.iloc[:, 1:] *= 100
+                    df2.iloc[:, 1:] *= 100
+                    df3.iloc[:, 1:] *= 100
+
+                    # Melt dataframes for heatmap preparation
+                    df1_melted = df1.melt(id_vars="Sheet name", var_name="Metric", value_name="Value")
+                    df2_melted = df2.melt(id_vars="Sheet name", var_name="Metric", value_name="Value")
+                    df3_melted = df3.melt(id_vars="Sheet name", var_name="Metric", value_name="Value")
+
+                    # Pivot the melted dataframes
+                    heatmap_data1 = df1_melted.pivot(index="Sheet name", columns="Metric", values="Value")
+                    heatmap_data2 = df2_melted.pivot(index="Sheet name", columns="Metric", values="Value")
+                    heatmap_data3 = df3_melted.pivot(index="Sheet name", columns="Metric", values="Value")
+
+                    # Create subplots
+                    graph = make_subplots(
+                        rows=3, cols=1,
+                        subplot_titles=("<b>Android Metrics</b>", "<b>iOS Metrics</b>", "<b>Backoffice Metrics</b>"),
+                        vertical_spacing=0.15
                     )
-                )
 
-                st.plotly_chart(vert_graph, use_container_width=True)
-                                
+                    # Define a custom colorscale
+                    custom_colorscale = [
+                        [0, "#1e1e1e"],  # Light gray
+                        [0.25, "#add8e6"],  # Light blue
+                        [0.5, "#87ceeb"],  # Sky blue
+                        [0.75, "#4682b4"],  # Steel blue
+                        [1, "#3c5d7c"],  # Navy
+                    ]
+
+                    # Add heatmaps with smaller tiles and bigger text
+                    tile_gap = 2  # Adjust gap size for smaller tiles
+                    text_size = 16  # Increase text size
+
+                    graph.add_trace(
+                        go.Heatmap(
+                            z=heatmap_data1.values,
+                            x=heatmap_data1.columns,
+                            y=heatmap_data1.index,
+                            colorscale=custom_colorscale,
+                            showscale=True,  # Single color legend
+                            colorbar=dict(title=" ", thickness=15, len=0.3, x=1.02),
+                            text=heatmap_data1.values,  # Add text data
+                            texttemplate="%{text:.2f}",  # Format text (2 decimal places)
+                            textfont=dict(color="white", size=text_size),  # Set text color and size
+                            xgap=tile_gap,  # Reduce gap for smaller tiles
+                            ygap=tile_gap
+                        ),
+                        row=1, col=1
+                    )
+
+                    graph.add_trace(
+                        go.Heatmap(
+                            z=heatmap_data2.values,
+                            x=heatmap_data2.columns,
+                            y=heatmap_data2.index,
+                            colorscale=custom_colorscale,
+                            showscale=False,  # No separate legend for this heatmap
+                            text=heatmap_data2.values,  # Add text data
+                            texttemplate="%{text:.2f}",  # Format text (2 decimal places)
+                            textfont=dict(color="white", size=text_size),  # Set text color and size
+                            xgap=tile_gap,  # Reduce gap for smaller tiles
+                            ygap=tile_gap
+                        ),
+                        row=2, col=1
+                    )
+
+                    graph.add_trace(
+                        go.Heatmap(
+                            z=heatmap_data3.values,
+                            x=heatmap_data3.columns,
+                            y=heatmap_data3.index,
+                            colorscale=custom_colorscale,
+                            showscale=False,  # No separate legend for this heatmap
+                            text=heatmap_data3.values,  # Add text data
+                            texttemplate="%{text:.2f}",  # Format text (2 decimal places)
+                            textfont=dict(color="white", size=text_size),  # Set text color and size
+                            xgap=tile_gap,  # Reduce gap for smaller tiles
+                            ygap=tile_gap
+                        ),
+                        row=3, col=1
+                    )
+                    # Update layout
+                    graph.update_layout(
+                        title_text=" ",
+                        height=900,
+                        width=800,
+                        template="plotly_dark",  # Apply dark theme
+                        font=dict(size=12, color="white"),
+                        title_font=dict(size=12, color="white"),
+                        plot_bgcolor="#1e1e1e",  # Dark background
+                        paper_bgcolor="#1e1e1e",  # Dark background
+                        yaxis=dict(
+                            title_font=dict(size=15, color="white"),  # Larger and bold font
+                            tickfont=dict(size=15, color="white")  # Larger y-tick font
+                        ),
+                        xaxis=dict(
+                            title_font=dict(size=15, color="white"),  # Larger and bold font
+                            tickfont=dict(size=15, color="white")  # Larger y-tick font
+                        ),
+                        yaxis2=dict(
+                            title_font=dict(size=15, color="white"),
+                            tickfont=dict(size=15, color="white")
+                        ),
+                        xaxis2=dict(
+                            title_font=dict(size=15, color="white"),  # Larger and bold font
+                            tickfont=dict(size=15, color="white")  # Larger y-tick font
+                        ),
+                        yaxis3=dict(
+                            title_font=dict(size=15, color="white"),
+                            tickfont=dict(size=15, color="white")
+                        ),
+                        xaxis3=dict(
+                            title_font=dict(size=13, color="white"),  # Larger and bold font
+                            tickfont=dict(size=13, color="white")  # Larger y-tick font
+                        ),
+                        
+                        margin=dict(l=0, r=0, t=50, b=20)
+                    )
+
+                    # Ensure the same style applies across multiple y-axes if using subplots
+                    graph.update_yaxes(
+                        title_font=dict(size=14, color="white"),
+                        tickfont=dict(size=14, color="white")
+                    )
+
+                    st.plotly_chart(graph, use_container_width=True)
+
+
+                    
+                    
+                    
 
     with tab2:
-        AgGrid(
-            excel_ptr, 
-            gridOptions=gb.build(), 
-            height=900, 
-            theme="alpine",
-            allow_unsafe_jscode=True,
-            # enable_enterprise_modules = True,
-            # fit_columns_on_grid_load = True
-        )
+        st.markdown(' ')
+        # AgGrid(
+        #     excel_ptr, 
+        #     gridOptions=gb.build(), 
+        #     height=900, 
+        #     theme="alpine",
+        #     allow_unsafe_jscode=True,
+        #     # enable_enterprise_modules = True,
+        #     # fit_columns_on_grid_load = True
+        # )
+    
+    st.markdown(
+        f"""
+        <div style="
+            height: 5vh;">
+            <div style="margin-top: 120px; color: #eee;">
+                A side project fully coded with 💛 by 
+            <a href="https://www.linkedin.com/in/naharirasif/" target="_blank" style="color: #ffbd44; text-decoration: none;">
+                Nahari Rasif
+            </a>
+            </div>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     display_tester_page()
