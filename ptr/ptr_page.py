@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
-from googledrive_ID import SCOPE_ID, SERVICE_ACC_ID, PARENT_FOLDER
+from Components.gdrive_database.googledrive_ID import SCOPE_ID, SERVICE_ACC_ID, PARENT_FOLDER
 
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
