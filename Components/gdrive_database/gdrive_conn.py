@@ -4,6 +4,26 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from io import BytesIO
 
+#
+# file = drive_api.get_list_files()
+# Output example
+
+# [
+# 0:[
+# 0:"test2.xlsx"
+# 1:"1zvjsTNr6HY7hf_EBDGy-..."
+# 2:"2025-01-07T08:27:19.000Z"
+# ]
+# 1:[
+# 0:"test1.xlsx"
+# 1:"1JzRCBOTHgisl-ckN58w9T..."
+# 2:"2025-01-05T18:34:10.572Z"
+# ]
+# ]
+
+# which if you want to access file, for exampple, test2.xlsx, then you have to query based on those dictionary keys 
+# file[0][1]
+
 @st.cache_resource
 def authenticate(service_account_file, scopes):
     '''
@@ -20,7 +40,6 @@ def get_drive_service(_creds):
     '''
     return build('drive', 'v3', credentials=_creds)
 
-
 @st.cache_data
 def get_list_files(_service, parent_folder_id):
     '''
@@ -36,7 +55,6 @@ def get_list_files(_service, parent_folder_id):
     return [
         (item['name'], item['id'], item['modifiedTime']) for item in items
     ] if items else []
-
 
 class googleConnect:
     def __init__(self, service_account_file, scopes, parent_folder_id):

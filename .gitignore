@@ -180,3 +180,4 @@ cython_debug/
 googledrive_ID.py
 service_account.json
 jira/jira_secrets.py
+ipynb_testing/*.ipynb
